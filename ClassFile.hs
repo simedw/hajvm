@@ -6,6 +6,7 @@ module ClassFile
   , ConstantPool_Info(..)
   , Attribute_Info(..)
   , (!!!)
+  , getStringCP
   ) where
 
 
@@ -319,3 +320,14 @@ parse :: FilePath -> IO (Either JError ClassFile)
 parse classFile = flip catch (\_ -> return $ throwError ErrorLoadClass) $ do
     input <- B.readFile classFile
     return . Right $ runGet parseCF input
+
+
+getStringCP :: ClassFile -> Int -> String
+getStringCP cf i = case (cp_info cf) !!! i of
+        C_String_Info i -> getString cf i 
+        
+
+getString :: ClassFile -> Word16 -> String
+getString cf i = case cp_info cf !!! i of
+    C_Class_Info n -> getString cf n
+    x              -> ustring x

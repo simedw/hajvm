@@ -6,6 +6,8 @@ module JGlobal
   , load
   , linking
   , initialize
+  , getClassFile
+  , getClassInfo
   ) where
 
 import Control.Monad.Trans
@@ -75,8 +77,8 @@ linking cn = unlessM (isLinked cn) $ do
     -- then preparetion
     -- and lastly resolving, but since we use lazy resolve we only need to do 
     -- preparetion now
-    liftIO . putStrLn $ "linking: " ++ cn
     classInfo <- prepare cn
+    liftIO . putStrLn $ "linking: " ++ cn
     modify (\gs -> gs { linkedclasses = M.insert cn classInfo (linkedclasses gs)})
 
 -- | prepares a class if not already prepared

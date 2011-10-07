@@ -11,3 +11,5 @@ errorM f = f >>= \x -> case x of
     Left  err -> throwError err
     Right v   -> return v 
 
+maybeM :: MonadError e m => e -> Maybe a -> m a
+maybeM e = errorM . return . maybe (Left e) Right

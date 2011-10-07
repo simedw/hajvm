@@ -1,6 +1,10 @@
 module ClassInfo 
   ( ClassInfo(..)
+  , MethodDefition(..)
+  , Reference(..)
   , prepare
+  , getMethod
+  , getFieldRef
   ) where
 
 import Data.IntMap (IntMap)
@@ -8,8 +12,9 @@ import qualified Data.IntMap as IM
 import Data.Word
 import Data.Bits
 import Data.Maybe
+import Data.List
 
-import ClassFile
+import ClassFile hiding (methods)
 import qualified ClassFile as CF
 import ByteCode
 import qualified ByteCode as BC
@@ -41,6 +46,9 @@ data MethodDefition = MethodDefition
 data AccessFlag = Public | Private | Protected
   deriving Show
 
+
+getMethod :: ClassInfo -> String -> Maybe MethodDefition
+getMethod ci mn = find (\x -> mn == method_name x) $ methods ci 
 
 prepare :: ClassName -> ClassFile -> ClassInfo
 prepare cn cf = ClassInfo (getSuperClass cf)
@@ -115,6 +123,11 @@ getName :: ClassFile -> Word16 -> String
 getName cf w = case cp_info cf !!! w of
     C_Class_Info n -> getName cf n
     x -> ustring x
+
+
+getFieldRef :: ClassInfo -> Int -> Maybe Reference
+getFieldRef ci index = IM.lookup index (fieldrefs ci)
+
 
 
 --- this should probably be in classfile...

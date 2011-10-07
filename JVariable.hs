@@ -1,3 +1,6 @@
 module JVariable where
 
-data JVariable = JVariable
+data JVariable 
+  = VInteger Int
+  | VStaticField String String
+  | VString String
