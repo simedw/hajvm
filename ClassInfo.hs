@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module ClassInfo 
   ( ClassInfo(..)
   , MethodDefition(..)
@@ -63,17 +64,11 @@ prepare cn cf = ClassInfo (getSuperClass cf)
 
 prepareMethods :: ClassFile -> [Method_Info] -> [MethodDefition]
 prepareMethods cf [] = []
-prepareMethods cf (x:xs) = MethodDefition
-    { method_name = name 
-    , method_code = code
-    , access_flag = access_flag
-    , isStatic    = static
-    , isNative    = native
-    } : prepareMethods cf xs
+prepareMethods cf (x:xs) = MethodDefition { .. } : prepareMethods cf xs
   where 
-    name   = ustring (cp_info cf !!! m_name_index x)
-    static = m_access_flags x `testBit` static_flag
-    native = m_access_flags x `testBit` native_flag
+    method_name   = ustring (cp_info cf !!! m_name_index x)
+    isStatic = m_access_flags x `testBit` static_flag
+    isNative = m_access_flags x `testBit` native_flag
     access_flag = case (m_access_flags x `testBit` public_flag 
                        ,m_access_flags x `testBit` private_flag
                        ,m_access_flags x `testBit` protected_flag) of
@@ -81,7 +76,7 @@ prepareMethods cf (x:xs) = MethodDefition
         (_,True,_) -> Private
         (_,_,True) -> Protected
         _       -> Public     -- if nothing is specified it's probably is Public  
-    code = head $ catMaybes (map codes (m_attributes_info x) ++ [Just IM.empty])
+    method_code = head $ catMaybes (map codes (m_attributes_info x) ++ [Just IM.empty])
     codes :: Attribute_Info -> Maybe ByteCodes
     codes x = case x of
         CAI _ _ _ c _ _ _  _ -> Just $ BC.parse c 0

@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module ClassFile
   ( ClassFile(..)
   , ClassName
@@ -67,48 +68,44 @@ parseCP = do
       len <- getWord16be
       ubytes <- read len
       let ustring = toString $ B.pack ubytes
-      return $ C_Utf8_Info { len = len, ubytes = ubytes, ustring = ustring}
+      return $ C_Utf8_Info { .. }
     3 -> do -- integer
       bytes <- getWord32be
-      return $ C_Integer_Info { bytes = bytes }
+      return $ C_Integer_Info { .. }
     4 -> do -- float
       bytes <- getWord32be
-      return $ C_Float_Info { bytes = bytes }
+      return $ C_Float_Info { .. }
     5 -> do -- long
       high_bytes <- getWord32be
       low_bytes <- getWord32be
-      return $ C_Long_Info { high_bytes = high_bytes, low_bytes = low_bytes }
+      return $ C_Long_Info { .. }
     6 -> do -- double
       high_bytes <- getWord32be
       low_bytes <- getWord32be
-      return $ C_Double_Info { high_bytes = high_bytes, low_bytes = low_bytes }
+      return $ C_Double_Info { .. }
     7 -> do -- class
       name_index <- getWord16be
-      return $ C_Class_Info { name_index = name_index }
+      return $ C_Class_Info { .. }
     8 -> do -- string
       string_index <- getWord16be
-      return $ C_String_Info { string_index = string_index}
+      return $ C_String_Info { .. } 
     9 -> do -- fieldref
       class_index <- getWord16be
       name_and_type_index <- getWord16be
-      return C_Fieldref_Info { class_index = class_index
-                             , name_and_type_index = name_and_type_index }
+      return C_Fieldref_Info { .. } 
     10 -> do -- methodref
       class_index <- getWord16be
       name_and_type_index <- getWord16be
-      return C_Methodref_Info { class_index = class_index
-                              , name_and_type_index = name_and_type_index }
+      return C_Methodref_Info { .. }
     11 -> do -- interfacemethodref
       class_index <- getWord16be
       name_and_type_index <- getWord16be
-      return C_InterfaceMethodref_Info { class_index = class_index
-                                       , name_and_type_index = name_and_type_index }
+      return C_InterfaceMethodref_Info { .. }
     12 -> do -- nameandtype
       name_index <- getWord16be
       descriptor_index <- getWord16be
-      return $ C_NameAndType_Info { name_index = name_index
-                                  , descriptor_index = descriptor_index }
-    n -> error $ "Unkown tag: " ++ show n
+      return $ C_NameAndType_Info { .. }
+    n -> error $ "Unknown tag: " ++ show n
 
  where
    read :: Word16 -> Get [Word8]
@@ -141,13 +138,7 @@ parseField cpi = do
   f_descriptor_index <- getWord16be
   f_attribute_count <- getWord16be
   f_attribute_info <- getTimes f_attribute_count (parseAttribute cpi)
-  return $ FI
-    { f_access_flags = f_access_flags
-    , f_name_index = f_name_index
-    , f_descriptor_index = f_descriptor_index
-    , f_attribute_count = f_attribute_count
-    , f_attribute_info = f_attribute_info
-    }
+  return FI {..}
 
 {-
     method_info {
@@ -176,13 +167,7 @@ parseMethod cpi = do
   m_descriptor_index <- getWord16be
   m_attributes_count <- getWord16be
   m_attributes_info <- getTimes m_attributes_count (parseAttribute cpi)
-  return $ MI
-    { m_access_flags = m_access_flags
-    , m_name_index = m_name_index
-    , m_descriptor_index = m_descriptor_index
-    , m_attributes_count = m_attributes_count
-    , m_attributes_info  = m_attributes_info
-    }
+  return MI {..}
 
 
 {-
@@ -223,12 +208,7 @@ parseExceptionTable = do
     end_pc <- getWord16be
     handler_pc <- getWord16be
     catch_type <- getWord16be
-    return ET 
-        { start_pc = start_pc
-        , end_pc = end_pc
-        , handler_pc = handler_pc
-        , catch_type = catch_type
-        }
+    return ET {..}
 parseAttribute :: [ConstantPool_Info] -> Get Attribute_Info
 parseAttribute cpi = do
     attribute_name_index <- getWord16be
@@ -243,22 +223,10 @@ parseAttribute cpi = do
             exception_table <- getTimes exception_table_length parseExceptionTable
             c_attributes_count <- getWord16be
             c_attributes_info  <- getTimes c_attributes_count (parseAttribute cpi)
-            return $ CAI { max_stack = max_stack
-                         , max_locals = max_locals
-                         , code_length = code_length
-                         , code = code
-                         , exception_table_length = exception_table_length
-                         , exception_table = exception_table
-                         , c_attributes_info = c_attributes_info
-                         , c_attributes_count = c_attributes_count
-                         }
+            return CAI {..}
         _ -> do
             attribute_data <- getTimes attribute_length getWord8
-            return $ AI
-                { attribute_name_index = attribute_name_index
-                , attribute_length = attribute_length   
-                , attribute_data = attribute_data
-                }
+            return AI {..}
 
 data ClassFile = CF
   { magic :: Word32
@@ -298,24 +266,7 @@ parseCF = do
   methods <- getTimes methods_count (parseMethod cp_info)
   attributes_count <- getWord16be
   attributes <- getTimes attributes_count (parseAttribute cp_info)
-  return $ CF
-    { magic = magic
-    , minor_version = minor_version
-    , major_version = major_version
-    , constant_pool_count = constant_pool_count
-    , cp_info = cp_info
-    , access_flags = access_flags
-    , this_class = this_class
-    , super_class = super_class
-    , interfaces_count = interfaces_count
-    , interfaces = interfaces
-    , fields_count = fields_count
-    , fields = fields
-    , methods_count = methods_count
-    , methods = methods
-    , attributes_count = attributes_count
-    , attributes = attributes
-    }
+  return CF {..}
 
 parse :: FilePath -> IO (Either JError ClassFile)
 parse classFile = flip catch (\_ -> return $ throwError ErrorLoadClass) $ do
