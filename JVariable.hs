@@ -25,3 +25,4 @@ instance Num JVariable where
     negate (VInteger v1) = (VInteger $ -v1)
     abs (VInteger v) = VInteger $ abs v
     signum (VInteger v) = VInteger $ signum v
+    fromInteger i = VInteger . fromInteger $ i

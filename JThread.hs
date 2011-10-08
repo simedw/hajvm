@@ -104,8 +104,7 @@ interpreter cn pc code = do
     BC.IAdd            -> next $ math (+)
     BC.ISub            -> next $ math (-)
     BC.IMul            -> next $ math (*)
-    BC.IInc i c        -> next $ vLookup i >>= \(VInteger v) -> 
-                                                vInsert i (VInteger (v+1))
+    BC.IInc i c        -> next $ vLookup i >>= \v -> vInsert i (v + fromIntegral c)
     BC.PutField i  -> next $ do
         ref <- getFieldRef cn i
         v   <- popOS
