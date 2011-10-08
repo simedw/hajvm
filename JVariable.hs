@@ -1,10 +1,15 @@
 module JVariable where
 
+import Data.Map (Map)
+
 data JVariable 
   = VInteger Int
   | VStaticField String String
   | VString String
   | VBoolean Bool
+  | VObjectRef Int -- ^ the object is on the heap
+  | VObject (Map String JVariable) -- String should be replaced
+  | VNull
  deriving (Show, Eq)
 
 instance Ord JVariable where

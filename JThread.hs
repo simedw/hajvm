@@ -12,6 +12,11 @@ import Control.Concurrent.MVar
 import qualified Data.IntMap as IM
 import Data.Maybe
 import Data.Word
+import Data.IntMap  (IntMap)
+import qualified Data.IntMap as IM
+import Data.Map (Map)
+import qualified Data.Map as M
+import System.Directory
 
 import ByteCode
 import qualified ByteCode as BC
@@ -34,12 +39,14 @@ data JThreadState = JThreadState
   { globalState   :: MVar JGlobalState
   , frames        :: [JFrameState]
   , currentClass  :: String -- more to come
+  , heap          :: IntMap JVariable
   }
 
 newThread gState = JThreadState
-  { globalState = gState
-  , frames      = []
+  { globalState  = gState
+  , frames       = []
   , currentClass = ""
+  , heap         = IM.empty
   }
 
 
@@ -54,7 +61,7 @@ popFrame = modify (\ts -> ts {frames = tail (frames ts)})
 
 execute :: ClassName -> String -> JThread ()
 execute cn mn = do
-    inG $ linking cn 
+    inG $ initialize cn 
     pushFrame newFrame
     callMethod cn mn 
     return ()
@@ -73,7 +80,7 @@ callMethod cn mn = do
 nativeCall :: ClassName -> String -> MethodDefition -> JThread ()
 nativeCall cn mn md = case (cn,mn) of
     ("java/io/PrintStream.class","println") -> do
-       VString str <- vLookup 0
+       VString str <- vLookup 1 -- first is this..
        liftIO $ putStrLn str
        popFrame
     x -> throwError . strMsg $ "Native method not implemented" ++ show x
@@ -82,17 +89,41 @@ interpreter :: ClassName -> Location -> ByteCodes -> JThread ()
 interpreter cn pc code = do
   opcode <- maybeM (strMsg "bytecode out of bounds") $ IM.lookup pc code
   case unBC opcode of
+    BC.ALoadC  i -> next $ do
+        vLookup i >>= pushOS
+    BC.AStoreC i -> next $ popOS >>= vInsert i
     BC.IConstC i -> next $ pushOS (VInteger i) 
     BC.IStoreC i -> next $ popOS >>= vInsert i
-    BC.GetStatic i     -> next $ getFieldRef cn i >>= pushOS
-    BC.LDC i           -> next $ getStringCP cn i >>= pushOS 
-    BC.ILoadC i        -> next $ vLookup i >>= pushOS
+    BC.ILoadC  i -> next $ vLookup i >>= pushOS
+    BC.LDC     i -> next $ getStringCP cn i >>= pushOS 
+    BC.GetStatic i     -> next $ getFieldRef cn i >>= 
+                                 pushOS . VStaticField cn . refName
     BC.InvokeVirtual i -> next $ getMethodRef cn i >>= call
-    BC.InvokeStatic  i -> next $ getMethodRef cn i >>= call  
+    BC.InvokeStatic  i -> next $ getMethodRef cn i >>= callStatic
+    BC.InvokeSpecial i -> next $ getMethodRef cn i >>= call
+    BC.IAdd            -> next $ math (+)
     BC.ISub            -> next $ math (-)
     BC.IMul            -> next $ math (*)
     BC.IInc i c        -> next $ vLookup i >>= \(VInteger v) -> 
                                                 vInsert i (VInteger (v+1))
+    BC.PutField i  -> next $ do
+        ref <- getFieldRef cn i
+        v   <- popOS
+        objref  <- popOS
+        heapUpdate objref (refName ref) v
+    BC.GetField i -> next $ do
+        classFile <- inG (getClassFile cn)
+        classInfo <- inG (getClassInfo cn)
+        ref <- getFieldRef cn i
+        objref  <- popOS
+        obj     <- heapLookupRef objref
+        pushOS $ getField obj (refName ref)
+    BC.Dup -> next $ peekOS >>= pushOS
+    BC.New i   -> next $ do 
+        className <- getClassCP cn i
+        obj       <- new className 
+        heapInsert obj >>= pushOS . VObjectRef
+        
     BC.IReturn -> popOS >>= \res -> popFrame >> pushOS res
     BC.Return  -> popFrame
     BC.Goto offset -> interpreter cn (pc + offset) code
@@ -108,6 +139,8 @@ interpreter cn pc code = do
     next p = p >> interpreter cn (pc + BC.sizeOfBC (fromJust $ IM.lookup pc code)) code
     unBC (BC.BC _ x _ ) = x   
     math op = popOS >>= \v2 -> popOS >>= \v1 -> pushOS (v1 `op` v2)
+
+icmp :: JVariable -> JVariable -> Compare -> Bool
 icmp v1 v2 Eq = v1 == v2
 icmp v1 v2 Ne = v1 /= v2
 icmp v1 v2 Lt = v1 < v2
@@ -116,16 +149,61 @@ icmp v1 v2 Gt = v1 > v2
 icmp v1 v2 Ge = v1 >= v2
 
 
+new :: ClassName -> JThread JVariable
+new cn = do
+    inG $ initialize cn
+    return $ VObject M.empty -- TODO: set default values
+
+heapInsert :: JVariable -> JThread Int
+heapInsert v = do
+    h <- gets heap
+    let next = 1 + IM.size h
+    modify (\ts -> ts { heap = IM.insert next v h} )
+    return next
+
+
+heapLookupRef :: JVariable -> JThread JVariable
+heapLookupRef (VObjectRef i) = heapLookup i
+
+heapLookup :: Int -> JThread JVariable
+heapLookup i = do 
+    h <- gets heap
+    maybeM (strMsg "heapLookup") $ IM.lookup i h
+
+heapUpdate :: JVariable -> String -> JVariable -> JThread ()
+heapUpdate (VObjectRef ref) = heapUpdate' ref 
+
+heapUpdate' :: Int -> String -> JVariable -> JThread ()
+heapUpdate' i field value = do
+    oldObj <- heapLookup i
+    let newObj = updateField oldObj field value
+    modify (\ts -> ts { heap = IM.insert i newObj (heap ts) })
+
+updateField :: JVariable -> String -> JVariable -> JVariable
+updateField (VObject fields) field v = VObject $ M.insert field v fields
+
+getField :: JVariable -> String -> JVariable
+getField (VObject fields) field = fromJust $ M.lookup field fields
+
 -- | calls a reference method
 -- | return has to pop the frame 
 call :: Reference -> JThread ()
 call ref = do
+    let argumentLength = 1 + getNumberOfArgs (refType ref)
+    args     <- replicateM argumentLength popOS
+    pushFrame newFrame
+    mapM (uncurry vInsert) $ zip [0..] (reverse args)
+    inG $ linking (className ref)
+    callMethod (className ref) (refName ref)
+callStatic :: Reference -> JThread ()
+callStatic ref = do
     let argumentLength = getNumberOfArgs (refType ref)
     args     <- replicateM argumentLength popOS
     pushFrame newFrame
-    mapM (uncurry vInsert) $ zip [0..] args
+    mapM (uncurry vInsert) $ zip [0..] (reverse args)
     inG $ linking (className ref)
     callMethod (className ref) (refName ref)
+
 
 -- | this is probably wrong, but every ; is a new argument
 getNumberOfArgs :: String -> Int
@@ -137,11 +215,10 @@ getNumberOfArgs ('L':xs) = 1 + (getNumberOfArgs . tail . dropWhile (/= ';') $ xs
 getNumberOfArgs xs = error xs
 --length . filter (==';') 
 
-getFieldRef :: ClassName -> Word16 -> JThread JVariable
+getFieldRef :: ClassName -> Word16 -> JThread Reference
 getFieldRef cn i = do
     classInfo <- inG $ getClassInfo cn
-    ref <- maybeM (strMsg "getFieldRef") $ CI.getFieldRef classInfo (fromIntegral i)
-    return $ VStaticField (className ref) (refName ref)
+    maybeM (strMsg "getFieldRef") $ CI.getFieldRef classInfo (fromIntegral i)
 
 getMethodRef :: ClassName -> Word16 -> JThread Reference
 getMethodRef cn i = do
@@ -155,6 +232,11 @@ getStringCP :: ClassName -> Word8 -> JThread JVariable
 getStringCP cn i = do
     classFile <- inG $ getClassFile cn
     return . VString $ CF.getStringCP classFile (fromIntegral i)
+
+getClassCP :: ClassName -> Word16 -> JThread ClassName
+getClassCP cn i = do
+    classFile <- inG (getClassFile cn)
+    return $ CF.getClassCP classFile (fromIntegral i)
 
 pushOS :: JVariable -> JThread ()
 pushOS = inF . Frame.pushOS 
@@ -188,7 +270,8 @@ inF p = do
 
 test = do 
     g <- newMVar newGlobal
-    res <- run (execute "example/Main.class" "main") (newThread g)
+    liftIO $ setCurrentDirectory "example"
+    res <- run (execute "Main.class" "main") (newThread g)
     case res of
         Left err -> putStrLn . show $ err
         Right v  -> putStrLn "done"

@@ -7,6 +7,7 @@ module ClassFile
   , Attribute_Info(..)
   , (!!!)
   , getStringCP
+  , getClassCP
   ) where
 
 
@@ -325,8 +326,12 @@ parse classFile = flip catch (\_ -> return $ throwError ErrorLoadClass) $ do
 getStringCP :: ClassFile -> Int -> String
 getStringCP cf i = case (cp_info cf) !!! i of
         C_String_Info i -> getString cf i 
-        
-
+    
+getClassCP :: ClassFile -> Int -> ClassName
+getClassCP cf i = case cp_info cf !!! i of
+   C_Class_Info n -> getString cf n ++ ".class"
+   x -> error $ "getClassCP: " ++ show x 
+    
 getString :: ClassFile -> Word16 -> String
 getString cf i = case cp_info cf !!! i of
     C_Class_Info n -> getString cf n

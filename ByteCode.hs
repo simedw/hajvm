@@ -39,6 +39,7 @@ data Instruction
   | AStore Word8 
 
   | PutField Word16
+  | GetField Word16
   | GetStatic Word16
   | Return | IReturn | AReturn
   | LDC Word8
@@ -167,6 +168,7 @@ bt =
     , 0xb0 ~> AReturn
     , 0xb1 ~> Return
     , 0xb2 ~~>> GetStatic
+    , 0xb4 ~~>> GetField
     , 0xb5 ~~>> PutField 
     , 0xb6 ~~>> InvokeVirtual
     , 0xb7 ~~>> InvokeSpecial
