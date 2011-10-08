@@ -69,7 +69,7 @@ insert v i = modify (\fs -> fs {localVariables = IM.insert i v (localVariables f
 -- | lookups an variable at an index
 lookup :: Index -> JFrame JVariable
 lookup i = gets (IM.lookup i . localVariables) >>= \x -> case x of
-    Nothing -> throwError . strMsg $ "lookup: index " ++ show i
+    Nothing -> throwError . strMsg $ "frame: lookup: index " ++ show i
     Just  r -> return r
 
 -- util --

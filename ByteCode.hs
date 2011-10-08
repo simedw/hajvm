@@ -43,7 +43,7 @@ data Instruction
   | Return | IReturn | AReturn
   | LDC Word8
   | If_ACmp Compare Word16 
-  | Goto Word16
+  | Goto Int -- signed
   | New Word16
   | Dup
   | LCmp
@@ -51,8 +51,9 @@ data Instruction
   | If_ICmp Compare Word16
   | AThrow
   | IAdd | LAdd | FAdd | DAdd
+  | ISub | IMul
   | BiPush Word8
-  | IInc Word8 Word8
+  | IInc Int Word8
  deriving (Eq,Show)
 
 data Compare = Eq | Ne | Lt | Ge | Gt | Le
@@ -83,6 +84,7 @@ data ByteTable
         {- n  i1 i2 = y $ case i1 `testBit` 7 of
             True  -> -(0xffff - n' i1 i2) -- - (n' (i1 `clearBit` 7) i2)
             False -> n' i1 i2 -}
+(~~>><) x y = x ~~>> (y . fromSigned)
 
 parseBC :: [Word8] -> (Instruction, [Word8])
 parseBC (x:xs) = case lookup x bt of
@@ -139,8 +141,9 @@ bt =
     , 0x61 ~> LAdd
     , 0x62 ~> FAdd
     , 0x63 ~> DAdd
-
-    , 0x84 ~~~> IInc
+    , 0x64 ~> ISub
+    , 0x68 ~> IMul
+    , 0x84 ~~~> (IInc . fromIntegral)
     , 0x94 ~> LCmp
 
     , 0x99 ~~>> If Eq
@@ -159,7 +162,7 @@ bt =
     , 0x19 ~~> ALoad
     , 0xa5 ~~>> If_ACmp Eq
     , 0xa6 ~~>> If_ACmp Ne
-    , 0xa7 ~~>> Goto
+    , 0xa7 ~~>>< Goto
     , 0xac ~> IReturn
     , 0xb0 ~> AReturn
     , 0xb1 ~> Return
@@ -199,4 +202,13 @@ sizeOf a = case lookup a bt of
 sizeOfBC :: ByteCode -> Int
 sizeOfBC (BC _ _ s) = s
 
+fromSigned :: Word16 -> Int
+fromSigned w = case w `testBit` 15 of
+    True -> - fromIntegral (0xffff - w) -1
+    False -> fromIntegral w
+
+
+
 --fancy x = putStrLn . unlines . map show . parse x
+--
+--

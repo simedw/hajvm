@@ -5,6 +5,7 @@ module ClassInfo
   , prepare
   , getMethod
   , getFieldRef
+  , getMethodRef
   ) where
 
 import Data.IntMap (IntMap)
@@ -127,6 +128,9 @@ getName cf w = case cp_info cf !!! w of
 
 getFieldRef :: ClassInfo -> Int -> Maybe Reference
 getFieldRef ci index = IM.lookup index (fieldrefs ci)
+
+getMethodRef :: ClassInfo -> Int -> Maybe Reference
+getMethodRef ci index = IM.lookup index (mrefs ci)
 
 
 
